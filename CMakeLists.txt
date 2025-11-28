@@ -1,13 +1,85 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.16)
 project(crcspeed C)
 
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Compiler flags
 add_compile_options(-O2 -Wall -Wextra)
-add_executable(crcspeed crcspeed.c crc64speed.c crc16speed.c main.c)
 
-add_executable(crc64speed crcspeed.c crc64speed.c)
-target_compile_definitions(crc64speed PRIVATE CRCSPEED_TEST_MAIN)
+# Enable SIMD instructions on x86
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64|i386|i686")
+    add_compile_options(-mpclmul -msse4.1)
+endif()
 
-add_executable(crc16speed crcspeed.c crc16speed.c)
-target_compile_definitions(crc16speed PRIVATE CRCSPEED_TEST_MAIN)
+# Enable crypto extensions on ARM64 (for Apple Silicon)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    if(APPLE)
+        # Apple Silicon has crypto extensions by default
+        add_compile_options(-mcpu=apple-m1)
+    else()
+        add_compile_options(-march=armv8-a+crypto)
+    endif()
+endif()
+
+# Core library sources
+set(CRC_SOURCES
+    crcspeed.c
+    crc64speed.c
+    crc16speed.c
+    crc_simd.c
+)
+
+# Original benchmark executable
+add_executable(crcspeed ${CRC_SOURCES} main.c)
+
+# Individual CRC test executables
+add_executable(crc64speed_test crcspeed.c crc64speed.c)
+target_compile_definitions(crc64speed_test PRIVATE CRCSPEED_TEST_MAIN)
+
+add_executable(crc16speed_test crcspeed.c crc16speed.c)
+target_compile_definitions(crc16speed_test PRIVATE CRCSPEED_TEST_MAIN)
+
+# Comprehensive test suite
+add_executable(crc_test ${CRC_SOURCES} crc_test.c)
+
+# Benchmark suite
+add_executable(crc_bench ${CRC_SOURCES} crc_bench.c)
+
+# Constant generator (for development)
+add_executable(gen_constants gen_constants.c)
+
+# Enable testing
+enable_testing()
+
+# Legacy individual implementation tests
+add_test(NAME crc64_basic_test COMMAND crc64speed_test)
+add_test(NAME crc16_basic_test COMMAND crc16speed_test)
+
+# Comprehensive test suite - run all tests
+add_test(NAME crc_all COMMAND crc_test all)
+
+# CRC64 test groups
+add_test(NAME crc64_vectors COMMAND crc_test crc64)
+add_test(NAME crc64_sizes COMMAND crc_test crc64_sizes)
+add_test(NAME crc64_alignment COMMAND crc_test crc64_align)
+
+# CRC16 test groups
+add_test(NAME crc16_vectors COMMAND crc_test crc16)
+add_test(NAME crc16_sizes COMMAND crc_test crc16_sizes)
+add_test(NAME crc16_alignment COMMAND crc_test crc16_align)
+add_test(NAME crc16_initial_crc COMMAND crc_test crc16_init)
+
+# Cross-implementation tests
+add_test(NAME consistency COMMAND crc_test consistency)
+
+# Combined test groups
+add_test(NAME test_vectors COMMAND crc_test vectors)
+add_test(NAME simd_tests COMMAND crc_test simd)
+
+# Custom target to run benchmarks
+add_custom_target(benchmark
+    COMMAND crc_bench 1048576 100
+    DEPENDS crc_bench
+    COMMENT "Running CRC benchmarks..."
+)

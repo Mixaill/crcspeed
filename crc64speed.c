@@ -167,7 +167,7 @@ bool crc64speed_init(void) {
 #else
     should_init(crc64_table_little, LITTLE1);
 #endif
-    crcspeed64little_init(crc64, dual ? (uint64_t(*)[256])crc64_table_little
+    crcspeed64little_init(crc64, dual ? (uint64_t (*)[256])crc64_table_little
                                       : crc64_table);
     return true;
 }
@@ -180,7 +180,7 @@ bool crc64speed_init_big(void) {
     should_init(crc64_table_big, BIG1);
 #endif
     crcspeed64big_init(crc64,
-                       dual ? (uint64_t(*)[256])crc64_table_big : crc64_table);
+                       dual ? (uint64_t (*)[256])crc64_table_big : crc64_table);
     return true;
 }
 
@@ -191,7 +191,7 @@ uint64_t crc64speed(uint64_t crc, const void *s, const uint64_t l) {
 #else
     check_init(crc64_table_little, LITTLE1);
 #endif
-    return crcspeed64little(dual ? (uint64_t(*)[256])crc64_table_little
+    return crcspeed64little(dual ? (uint64_t (*)[256])crc64_table_little
                                  : crc64_table,
                             crc, (void *)s, l);
 }
@@ -203,7 +203,8 @@ uint64_t crc64speed_big(uint64_t crc, const void *s, const uint64_t l) {
 #else
     check_init(crc64_table_big, BIG1);
 #endif
-    return crcspeed64big(dual ? (uint64_t(*)[256])crc64_table_big : crc64_table,
+    return crcspeed64big(dual ? (uint64_t (*)[256])crc64_table_big
+                              : crc64_table,
                          crc, (void *)s, l);
 }
 
@@ -214,7 +215,7 @@ bool crc64speed_init_native(void) {
 
 /* Iterate over table to fully load it into a cache near the CPU. */
 void crc64speed_cache_table(void) {
-    uint64_t m;
+    volatile uint64_t m;
     for (int i = 0; i < 8; ++i) {
         for (int j = 0; j < 256; ++j) {
 #ifndef CRC64SPEED_DUAL
@@ -223,9 +224,9 @@ void crc64speed_cache_table(void) {
             m = crc64_table_little[i][j];
             m += crc64_table_big[i][j];
 #endif
-            ++m;
         }
     }
+    (void)m; /* Suppress unused variable warning */
 }
 
 /* If you are on a platform where endianness can change at runtime, this
