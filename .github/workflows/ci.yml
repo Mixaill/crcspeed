@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, simd]
+  pull_request:
+    branches: [master, main, simd]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64 with GCC
+          - name: Linux x64 (GCC)
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+
+          # Linux x64 with Clang
+          - name: Linux x64 (Clang)
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+
+          # Linux ARM64 with GCC
+          - name: Linux ARM64 (GCC)
+            os: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+
+          # Linux ARM64 with Clang
+          - name: Linux ARM64 (Clang)
+            os: ubuntu-24.04-arm
+            cc: clang
+            cxx: clang++
+
+          # macOS ARM64 with AppleClang
+          - name: macOS ARM64 (AppleClang)
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+
+          # macOS ARM64 with GCC (Homebrew)
+          - name: macOS ARM64 (GCC)
+            os: macos-latest
+            cc: gcc-14
+            cxx: g++-14
+            install_gcc: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential clang
+
+      - name: Install GCC (macOS)
+        if: matrix.install_gcc == true
+        run: brew install gcc@14
+
+      - name: Display compiler version
+        run: |
+          echo "=== Compiler Version ==="
+          ${{ matrix.cc }} --version
+
+      - name: Configure CMake
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_C_FLAGS="-Werror"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: List available tests
+        run: ctest --test-dir build -N
+
+      - name: Run all CTests
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Run individual test groups
+        run: |
+          echo "=== CRC64 Vector Tests ==="
+          ./build/crc_test crc64
+          echo ""
+          echo "=== CRC16 Vector Tests ==="
+          ./build/crc_test crc16
+          echo ""
+          echo "=== SIMD Tests ==="
+          ./build/crc_test simd
+          echo ""
+          echo "=== Consistency Tests ==="
+          ./build/crc_test consistency
+
+      - name: Run benchmark (smoke test)
+        run: ./build/crcspeed -n 3
+
+      - name: Display system info
+        run: |
+          echo "=== System Information ==="
+          uname -a
+          echo ""
+          echo "=== CPU Info ==="
+          if [ "$(uname)" = "Darwin" ]; then
+            sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "Apple Silicon"
+            echo "Compiler: ${{ matrix.cc }}"
+          else
+            cat /proc/cpuinfo | grep "model name" | head -1 || cat /proc/cpuinfo | head -20
+          fi
